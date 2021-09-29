@@ -1,0 +1,10 @@
+target/
+.metals/
+.vscode/
+.bloop/
+.bsp/
+.history/
+
+
+project/.bloop
+project/project
