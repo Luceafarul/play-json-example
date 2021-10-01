@@ -25,6 +25,15 @@ object Combinators extends App {
   }
   """)
 
+  val place = Place(
+    "Watership Down",
+    Location(51.235685, -1.309197),
+    Seq(
+      Resident("Fiver", 4, None),
+      Resident("Bigwig", 6, Some("Owsla"))
+    )
+  )
+
   // JsPath
   // JsPath is a core building block for creating Reads/Writes.
   // JsPath represents the location of data in a JsValue structure.
@@ -104,7 +113,101 @@ object Combinators extends App {
 
   import ReadsWithValidation._
   parsedFromString.validate[Place] match {
-    case JsSuccess(place, _)  => println(s"Place: ${place.name}")
-    case e: JsError => println(s"Error: $e")
+    case JsSuccess(place, _) => println(s"Place: ${place.name}")
+    case e: JsError          => println(s"Error: $e")
   }
+
+  // Writes
+  // Writes converters are used to convert from some type to a JsValue.
+  implicit val locationWrites: Writes[Location] = (
+    (JsPath \ "lat").write[Double] and
+      (JsPath \ "long").write[Double]
+  )(unlift(Location.unapply))
+
+  implicit val residentWrites: Writes[Resident] = (
+    (JsPath \ "name").write[String] and
+      (JsPath \ "age").write[Int] and
+      (JsPath \ "role").writeNullable[String]
+  )(unlift(Resident.unapply))
+
+  implicit val placeWrites: Writes[Place] = (
+    (JsPath \ "name").write[String] and
+      (JsPath \ "location").write[Location] and
+      (JsPath \ "residents").write[Seq[Resident]]
+  )(unlift(Place.unapply))
+
+  val placeJson = Json.toJson(place)
+  println(placeJson)
+
+  // Recursive Types
+  final case class User(name: String, friends: Seq[User])
+
+  implicit lazy val userReads: Reads[User] = (
+    (__ \ "name").read[String] and
+      (__ \ "friends").lazyRead(Reads.seq[User](userReads))
+  )(User)
+
+  implicit lazy val userWrites: Writes[User] = (
+    (__ \ "name").write[String] and
+      (__ \ "friends").lazyWrite(Writes.seq[User](userWrites))
+  )(unlift(User.unapply))
+
+  val userParsed = Json.parse("""
+  {
+    "name": "Tommy",
+    "friends": [
+      {
+        "name": "Anna",
+        "friends": []
+      },
+      {
+        "name": "Mark",
+        "friends": [
+          {
+            "name": "Anna",
+            "friends": []
+          }
+        ]
+      },
+      {
+        "name": "Helena",
+        "friends": []
+      }
+    ]
+  }
+  """)
+
+  userParsed.validate[User] match {
+    case JsSuccess(user, _) => println(s"User: $user")
+    case JsError(errors)    => println(s"Error: $errors")
+  }
+
+  val tommy = User("Tommy", List(User("Anna", List(User("Tommy", List()), User("Arthur", List())))))
+  val tommyJson = Json.toJson(tommy)
+
+  println(tommyJson)
+
+  // Format
+  // Format[T] is just a mix of the Reads and Writes traits and can be used for implicit conversion in place of its components.
+  final case class Person(name: String, age: Int)
+
+  implicit val personR: Reads[Person] = (
+    (JsPath \ "name").read[String] and 
+      (JsPath \ "age").read[Int]
+  )(Person)
+
+  implicit val personW: Writes[Person] = (
+    (JsPath \ "name").write[String] and 
+      (JsPath \ "age").write[Int]
+  )(unlift(Person.unapply))
+
+  implicit val personF: Format[Person] = Format(personR, personW)
+
+  // Or via create new instance
+  // implicit val personF: Format[Person] = new Format[Person] {
+  //   def reads(json: JsValue): JsResult[Person] = ???
+  //   def writes(o: Person): JsValue = ???
+  // }
+
+  println(Json.toJson(Person("Arthur", 73)))
 }
